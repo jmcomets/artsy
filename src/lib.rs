@@ -1,5 +1,19 @@
 extern crate take_mut;
 
+#[cfg(target_arch = "x86")]
+use std::arch::x86::{
+    _mm_set1_epi8,
+    _mm_cmpeq_epi8,
+    _mm_movemask_epi8,
+};
+
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::{
+    _mm_set1_epi8,
+    _mm_cmpeq_epi8,
+    _mm_movemask_epi8,
+};
+
 use std::mem;
 
 pub struct Trie<T> {
@@ -30,21 +44,29 @@ impl<T> NodeOrLeaf<T> {
         }
     }
 
-    // fn as_leaf(&self) -> Option<&T> {
-    //     if let Leaf(ref value) = self {
-    //         Some(value)
-    //     } else {
-    //         None
-    //     }
-    // }
+    fn as_leaf(&self) -> Option<&T> {
+        if let Leaf(ref value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
 
-    // fn to_node(self) -> Option<Node<T>> {
-    //     if let Node(node) = self {
-    //         Some(node)
-    //     } else {
-    //         None
-    //     }
-    // }
+    fn as_leaf_mut(&mut self) -> Option<&mut T> {
+        if let Leaf(ref mut value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn to_node(self) -> Option<Node<T>> {
+        if let Node(node) = self {
+            Some(node)
+        } else {
+            None
+        }
+    }
 
     fn to_leaf(self) -> Option<T> {
         if let Leaf(value) = self {
@@ -188,14 +210,42 @@ impl<T> Node<T> {
                 }
             }
 
-            Node16 { .. } => {
-                unimplemented!();
+            Node16 { child_indices, children, nb_children } => {
+                macro_rules! unimplemented_block { ($x:block) => { unimplemented!(); } }
+                unimplemented_block!{{
+                    // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
+                    // position in `child_indices` that needs to be searched.
+                    let key_vec = _mm_set1_epi8(key as i8);
+
+                    // Compare all child_keys in parallel. Don't worry if some of the keys aren't
+                    // valid, we'll mask the results to only consider the valid ones below.
+                    let matches = _mm_cmpeq_epi8(key_vec, child_indices.into_bits()); // FIXME
+
+                    // Apply a mask to select only the first `nb_children` values.
+                    let mask = (1 << *nb_children) - 1;
+                    let match_bits = _mm_movemask_epi8(matches) & mask;
+
+                    // No match if there are no '1's in the bitfield.
+                    if match_bits == 0 {
+                        // If we're adding a new entry, there should be less than 16 entries.
+                        if *nb_children < 16 {
+                            children[*nb_children as usize] = Some(Box::new(child));
+                            *nb_children += 1;
+                            return None;
+                        }
+                    } else {
+                        // Find the index of the first '1' in the bitfield by counting the leading zeros.
+                        let index = match_bits.leading_zeros();
+                        mem::swap(&mut child, children[index as usize].as_mut().unwrap());
+                        return Some(child);
+                    }
+                }}
             }
 
             Node48 { child_indices, children, nb_children } => {
                 let ref mut index = child_indices[key as usize];
                 if *index >= 48 {
-                    // if we're adding a new entry, there should be less than 48 entries
+                    // If we're adding a new entry, there should be less than 48 entries.
                     if *nb_children < 48 {
                         *index = *nb_children;
                         children[*index as usize] = Some(Box::new(child));
