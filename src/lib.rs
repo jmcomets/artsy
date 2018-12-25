@@ -1,5 +1,6 @@
 extern crate take_mut;
 
+#[cfg(not(feature = "no-simd"))]
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{
     _mm_cmpeq_epi8,
@@ -8,6 +9,7 @@ use std::arch::x86::{
     _mm_set1_epi8,
 };
 
+#[cfg(not(feature = "no-simd"))]
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
     _mm_cmpeq_epi8,
@@ -211,9 +213,10 @@ impl<T> Node<T> {
     fn get(&self, key: &[u8], term: u8) -> Option<&T> {
         if key.is_empty() {
             self.find_child(term)
-                .and_then(|n| n.as_leaf())
+                .map(|n| n.as_leaf().unwrap())
         } else {
-            self.find_child(key[0]).and_then(|n| n.as_node())
+            self.find_child(key[0])
+                .and_then(|n| n.as_node())
                 .and_then(|node| node.get(&key[1..], term))
         }
     }
@@ -241,7 +244,7 @@ impl<T> Node<T> {
             }
 
             Node16 { child_indices, children, nb_children } => {
-                if let Some(index) = node16_find_child_index(child_indices, *nb_children, key) {
+                if let Some(index) = node16_find_child_index(child_indices, *nb_children as usize, key) {
                     mem::swap(&mut child, children[index as usize].as_mut().unwrap());
                     return Some(child);
                 } else {
@@ -389,7 +392,7 @@ impl<T> Node<T> {
             }
 
             Node16 { child_indices, children, nb_children } => {
-                if let Some(index) = node16_find_child_index(child_indices, *nb_children, key) {
+                if let Some(index) = node16_find_child_index(child_indices, *nb_children as usize, key) {
                     children[index as usize].as_ref().map(|x| &**x)
                 } else {
                     None
@@ -416,7 +419,18 @@ impl<T> Node<T> {
     }
 }
 
-fn node16_find_child_index(child_indices: &[u8; 16], nb_children: u8, key: u8) -> Option<u32> {
+#[cfg(feature = "no-simd")]
+fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
+    for i in 0..nb_children {
+        if child_indices[i] == key {
+            return Some(i);
+        }
+    }
+    None
+}
+
+#[cfg(not(feature = "no-simd"))]
+fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
     // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
     // position in `child_indices` that needs to be searched.
     let key_vec = unsafe { _mm_set1_epi8(key as i8) };
@@ -432,7 +446,7 @@ fn node16_find_child_index(child_indices: &[u8; 16], nb_children: u8, key: u8) -
 
     // The child's index is the first '1' in `match_bits`
     if match_bits != 0 {
-        Some(match_bits.leading_zeros())
+        Some(match_bits.leading_zeros() as usize)
     } else {
         None
     }
