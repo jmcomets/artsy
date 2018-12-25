@@ -2,16 +2,18 @@ extern crate take_mut;
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{
-    _mm_set1_epi8,
     _mm_cmpeq_epi8,
+    _mm_loadu_si128,
     _mm_movemask_epi8,
+    _mm_set1_epi8,
 };
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{
-    _mm_set1_epi8,
     _mm_cmpeq_epi8,
+    _mm_loadu_si128,
     _mm_movemask_epi8,
+    _mm_set1_epi8,
 };
 
 use std::mem;
@@ -156,9 +158,33 @@ impl<T> Trie<T> {
     fn contains_impl(&self, key: &[u8]) -> bool {
         match self.root {
             None                 => false,
-            Some(Node(ref node)) => node.contains(key),
+            Some(Node(ref node)) => node.contains(key, self.term),
             Some(Leaf(_))        => unreachable!(),
         }
+    }
+
+    pub fn get(&self, key: &[u8]) -> Result<Option<&T>, KeyContainsTerminator> {
+        if !key.contains(&self.term) {
+            Ok(self.get_impl(key))
+        } else {
+            Err(KeyContainsTerminator)
+        }
+    }
+
+    pub unsafe fn get_unchecked(&self, key: &[u8]) -> Option<&T> {
+        self.get_impl(key)
+    }
+
+    fn get_impl(&self, key: &[u8]) -> Option<&T> {
+        match self.root {
+            None                 => None,
+            Some(Node(ref node)) => node.get(key, self.term),
+            Some(Leaf(_))        => unreachable!(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
     }
 }
 
@@ -178,13 +204,17 @@ impl<T> Node<T> {
         }
     }
 
-    fn contains(&self, key: &[u8]) -> bool {
+    fn contains(&self, key: &[u8], term: u8) -> bool {
+        self.get(key, term).is_some()
+    }
+
+    fn get(&self, key: &[u8], term: u8) -> Option<&T> {
         if key.is_empty() {
-            true
+            self.find_child(term)
+                .and_then(|n| n.as_leaf())
         } else {
             self.find_child(key[0]).and_then(|n| n.as_node())
-                .map(|n| n.contains(&key[1..]))
-                .unwrap_or(false)
+                .and_then(|node| node.get(&key[1..], term))
         }
     }
 
@@ -211,35 +241,17 @@ impl<T> Node<T> {
             }
 
             Node16 { child_indices, children, nb_children } => {
-                macro_rules! unimplemented_block { ($x:block) => { unimplemented!(); } }
-                unimplemented_block!{{
-                    // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
-                    // position in `child_indices` that needs to be searched.
-                    let key_vec = _mm_set1_epi8(key as i8);
-
-                    // Compare all child_keys in parallel. Don't worry if some of the keys aren't
-                    // valid, we'll mask the results to only consider the valid ones below.
-                    let matches = _mm_cmpeq_epi8(key_vec, child_indices.into_bits()); // FIXME
-
-                    // Apply a mask to select only the first `nb_children` values.
-                    let mask = (1 << *nb_children) - 1;
-                    let match_bits = _mm_movemask_epi8(matches) & mask;
-
-                    // No match if there are no '1's in the bitfield.
-                    if match_bits == 0 {
-                        // If we're adding a new entry, there should be less than 16 entries.
-                        if *nb_children < 16 {
-                            children[*nb_children as usize] = Some(Box::new(child));
-                            *nb_children += 1;
-                            return None;
-                        }
-                    } else {
-                        // Find the index of the first '1' in the bitfield by counting the leading zeros.
-                        let index = match_bits.leading_zeros();
-                        mem::swap(&mut child, children[index as usize].as_mut().unwrap());
-                        return Some(child);
+                if let Some(index) = node16_find_child_index(child_indices, *nb_children, key) {
+                    mem::swap(&mut child, children[index as usize].as_mut().unwrap());
+                    return Some(child);
+                } else {
+                    // If we're adding a new entry, there should be less than 16 entries.
+                    if *nb_children < 16 {
+                        children[*nb_children as usize] = Some(Box::new(child));
+                        *nb_children += 1;
+                        return None;
                     }
-                }}
+                }
             }
 
             Node48 { child_indices, children, nb_children } => {
@@ -269,7 +281,7 @@ impl<T> Node<T> {
             }
         }
 
-        // final step: upgrade and retry
+        // Insert did not succeed? Upgrade and retry.
         take_mut::take(self, Self::upgrade);
         self.insert_child(key, child)
     }
@@ -376,8 +388,12 @@ impl<T> Node<T> {
                 None
             }
 
-            Node16 { .. } => {
-                unimplemented!();
+            Node16 { child_indices, children, nb_children } => {
+                if let Some(index) = node16_find_child_index(child_indices, *nb_children, key) {
+                    children[index as usize].as_ref().map(|x| &**x)
+                } else {
+                    None
+                }
             }
 
             Node48 { child_indices, children, .. } => {
@@ -400,13 +416,43 @@ impl<T> Node<T> {
     }
 }
 
+fn node16_find_child_index(child_indices: &[u8; 16], nb_children: u8, key: u8) -> Option<u32> {
+    // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
+    // position in `child_indices` that needs to be searched.
+    let key_vec = unsafe { _mm_set1_epi8(key as i8) };
+    let indices_vec = unsafe { _mm_loadu_si128(child_indices.as_ptr() as *const _) };
+
+    // Compare all `child_indices` in parallel. Don't worry if some of the keys
+    // aren't valid, we'll mask the results to only consider the valid ones below.
+    let matches = unsafe { _mm_cmpeq_epi8(key_vec, indices_vec) };
+
+    // Apply a mask to select only the first `nb_children` values.
+    let mask = (1 << nb_children) - 1;
+    let match_bits = unsafe { _mm_movemask_epi8(matches) & mask };
+
+    // The child's index is the first '1' in `match_bits`
+    if match_bits != 0 {
+        Some(match_bits.leading_zeros())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn it_works() {
-        assert_eq!(2 + 2, 4);
+        let mut trie = Trie::for_utf8();
+        trie.insert(b"the answer", 42).unwrap();
+        assert_eq!(trie.get(b"the answer").unwrap(), Some(&42));
+    }
+
+    #[test]
+    fn it_is_empty_by_default() {
+        let mut trie = Trie::<()>::for_utf8();
+        assert!(trie.is_empty());
     }
 
     #[test]
