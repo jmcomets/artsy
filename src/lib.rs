@@ -48,6 +48,7 @@ impl<T> NodeOrLeaf<T> {
         }
     }
 
+    #[allow(dead_code)]
     fn as_leaf(&self) -> Option<&T> {
         if let Leaf(ref value) = self {
             Some(value)
@@ -56,6 +57,7 @@ impl<T> NodeOrLeaf<T> {
         }
     }
 
+    #[allow(dead_code)]
     fn as_leaf_mut(&mut self) -> Option<&mut T> {
         if let Leaf(ref mut value) = self {
             Some(value)
@@ -64,6 +66,7 @@ impl<T> NodeOrLeaf<T> {
         }
     }
 
+    #[allow(dead_code)]
     fn to_node(self) -> Option<Node<T>> {
         if let Node(node) = self {
             Some(node)
@@ -343,7 +346,7 @@ impl<T> Node<T> {
                 }
             }
 
-            Node48 { child_indices: child_indices, children: mut old_children, .. } => {
+            Node48 { child_indices, children: mut old_children, .. } => {
                 let mut children: [Option<Box<NodeOrLeaf<T>>>; 256] = [
                     None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
                     None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
@@ -455,36 +458,57 @@ fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
+
+    trait TrieTestExtensions<T: Clone + PartialEq + Debug> {
+        fn check_insertion(&mut self, key: &[u8], value: T);
+    }
+
+    impl<T: Clone + PartialEq + Debug> TrieTestExtensions<T> for Trie<T> {
+        fn check_insertion(&mut self, key: &[u8], value: T) {
+            self.insert(key, value.clone()).unwrap();
+            assert_eq!(self.get(key).unwrap(), Some(&value));
+        }
+    }
 
     #[test]
     fn it_works() {
         let mut trie = Trie::for_utf8();
-        trie.insert(b"the answer", 42).unwrap();
-        assert_eq!(trie.get(b"the answer").unwrap(), Some(&42));
+        trie.check_insertion(b"the answer", 42);
+    }
+
+    #[test]
+    fn it_works_for_empty_strings() {
+        let mut trie = Trie::for_utf8();
+        trie.check_insertion(b"", 1);
     }
 
     #[test]
     fn it_is_empty_by_default() {
-        let mut trie = Trie::<()>::for_utf8();
+        let trie = Trie::<()>::for_utf8();
         assert!(trie.is_empty());
     }
 
     #[test]
     fn it_can_store_less_than_4_parallel_entries() {
         let mut trie = Trie::for_utf8();
-        trie.insert(b"aa", 1).unwrap();
-        trie.insert(b"ab", 2).unwrap();
-        trie.insert(b"ac", 3).unwrap();
-        trie.insert(b"ad", 4).unwrap();
-        trie.insert(b"aaa", 11).unwrap();
-        trie.insert(b"aab", 12).unwrap();
-        trie.insert(b"aac", 13).unwrap();
-        trie.insert(b"aad", 14).unwrap();
-    }
-
-    #[test]
-    fn it_can_store_empty_strings() {
-        let mut trie = Trie::for_utf8();
-        trie.insert(b"", 1).unwrap();
+        // 1) insert everything
+        trie.check_insertion(b"aa", 1);
+        trie.check_insertion(b"ab", 2);
+        trie.check_insertion(b"ac", 3);
+        trie.check_insertion(b"ad", 4);
+        trie.check_insertion(b"aaa", 11);
+        trie.check_insertion(b"aab", 12);
+        trie.check_insertion(b"aac", 13);
+        trie.check_insertion(b"aad", 14);
+        // 2) check again (FIXME)
+        //assert_eq!(trie.get(b"aa").unwrap(), Some(&1));
+        //assert_eq!(trie.get(b"ab").unwrap(), Some(&2));
+        //assert_eq!(trie.get(b"ac").unwrap(), Some(&3));
+        //assert_eq!(trie.get(b"ad").unwrap(), Some(&4));
+        //assert_eq!(trie.get(b"aaa").unwrap(), Some(&11));
+        //assert_eq!(trie.get(b"aab").unwrap(), Some(&12));
+        //assert_eq!(trie.get(b"aac").unwrap(), Some(&13));
+        //assert_eq!(trie.get(b"aad").unwrap(), Some(&14));
     }
 }
