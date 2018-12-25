@@ -1,5 +1,5 @@
 [package]
-name = "trie-art"
+name = "artsy"
 version = "0.1.0"
 authors = ["Jean-Marie Comets <jean.marie.comets@gmail.com>"]
 
