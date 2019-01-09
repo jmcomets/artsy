@@ -203,7 +203,7 @@ impl<T> Node<T> {
             self.insert_child(term, Leaf(value))
                 .map(|n| n.to_leaf().unwrap())
         } else {
-            self.insert_child(key[0], Node(Node::new()));
+            self.insert_child_if_not_exists(key[0], Node(Node::new()));
             let child = self.find_child_mut(key[0]).unwrap().as_node_mut().unwrap();
             child.insert(&key[1..], value, term)
         }
@@ -222,6 +222,71 @@ impl<T> Node<T> {
                 .and_then(|n| n.as_node())
                 .and_then(|node| node.get(&key[1..], term))
         }
+    }
+
+    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<T>) {
+        match self {
+            Node4 { children } => {
+                // 1st step: try to replace existing entry
+                for existing_child in children.iter_mut() {
+                    if let Some((k, _)) = existing_child {
+                        if key == *k {
+                            return;
+                        }
+                    }
+                }
+
+                // 2nd step: try to add a new entry
+                for existing_child in children.iter_mut() {
+                    if existing_child.is_none() {
+                        *existing_child = Some((key, Box::new(child)));
+                        return;
+                    }
+                }
+            }
+
+            Node16 { child_indices, children, nb_children } => {
+                if let Some(_) = node16_find_child_index(child_indices, *nb_children as usize, key) {
+                    return;
+                } else {
+                    // If we're adding a new entry, there should be less than 16 entries.
+                    if *nb_children < 16 {
+                        child_indices[*nb_children as usize] = key;
+                        children[*nb_children as usize] = Some(Box::new(child));
+                        *nb_children += 1;
+                        return;
+                    }
+                }
+            }
+
+            Node48 { child_indices, children, nb_children } => {
+                let ref mut index = child_indices[key as usize];
+                if *index >= 48 {
+                    // If we're adding a new entry, there should be less than 48 entries.
+                    if *nb_children < 48 {
+                        *index = *nb_children;
+                        children[*index as usize] = Some(Box::new(child));
+                        *nb_children += 1;
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            }
+
+            Node256 { children } => {
+                if let Some(_) = children[key as usize].as_mut() {
+                    return;
+                }
+
+                children[key as usize] = Some(Box::new(child));
+                return;
+            }
+        }
+
+        // Insert did not succeed? Upgrade and retry.
+        take_mut::take(self, Self::upgrade);
+        self.insert_child_if_not_exists(key, child)
     }
 
     fn insert_child(&mut self, key: u8, mut child: NodeOrLeaf<T>) -> Option<NodeOrLeaf<T>> {
@@ -491,25 +556,21 @@ mod tests {
     }
 
     #[test]
-    fn it_can_store_less_than_4_parallel_entries() {
+    fn it_doesnt_overwrite_entries_with_a_common_prefix() {
         let mut trie = Trie::for_utf8();
-        // 1) insert everything
-        trie.check_insertion(b"aa", 1);
-        trie.check_insertion(b"ab", 2);
-        trie.check_insertion(b"ac", 3);
-        trie.check_insertion(b"ad", 4);
-        trie.check_insertion(b"aaa", 11);
-        trie.check_insertion(b"aab", 12);
-        trie.check_insertion(b"aac", 13);
-        trie.check_insertion(b"aad", 14);
-        // 2) check again (FIXME)
-        //assert_eq!(trie.get(b"aa").unwrap(), Some(&1));
-        //assert_eq!(trie.get(b"ab").unwrap(), Some(&2));
-        //assert_eq!(trie.get(b"ac").unwrap(), Some(&3));
-        //assert_eq!(trie.get(b"ad").unwrap(), Some(&4));
-        //assert_eq!(trie.get(b"aaa").unwrap(), Some(&11));
-        //assert_eq!(trie.get(b"aab").unwrap(), Some(&12));
-        //assert_eq!(trie.get(b"aac").unwrap(), Some(&13));
-        //assert_eq!(trie.get(b"aad").unwrap(), Some(&14));
+        trie.insert(b"a", 1).unwrap();
+        trie.insert(b"ab", 2).unwrap();
+        assert_eq!(trie.get(b"a").unwrap(), Some(&1));
+        assert_eq!(trie.get(b"ab").unwrap(), Some(&2));
+    }
+
+    #[test]
+    fn it_can_store_more_than_4_parallel_entries() {
+        let mut trie = Trie::for_utf8();
+        trie.check_insertion(b"a", 1);
+        trie.check_insertion(b"b", 2);
+        trie.check_insertion(b"c", 3);
+        trie.check_insertion(b"d", 4);
+        trie.check_insertion(b"e", 5);
     }
 }
