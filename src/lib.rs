@@ -253,6 +253,7 @@ impl<T> Node<T> {
                 } else {
                     // If we're adding a new entry, there should be less than 16 entries.
                     if *nb_children < 16 {
+                        child_indices[*nb_children as usize] = key;
                         children[*nb_children as usize] = Some(Box::new(child));
                         *nb_children += 1;
                         return None;
@@ -449,7 +450,7 @@ fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8
 
     // The child's index is the first '1' in `match_bits`
     if match_bits != 0 {
-        Some(match_bits.leading_zeros() as usize)
+        Some(match_bits.trailing_zeros() as usize)
     } else {
         None
     }
