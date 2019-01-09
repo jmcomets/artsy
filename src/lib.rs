@@ -400,9 +400,9 @@ impl<T> Node<T> {
                     None, None, None, None, None, None,
                 ];
 
-                for (i, j) in old_child_indices.iter().cloned().enumerate() {
-                    child_indices[i] = j;
-                    mem::swap(&mut children[i], &mut old_children[j as usize]);
+                for (i, (&key, child)) in old_child_indices.iter().zip(old_children.iter_mut()).enumerate() {
+                    child_indices[i] = key;
+                    mem::swap(child, &mut children[i]);
                 }
 
                 Node48 {
@@ -572,5 +572,27 @@ mod tests {
         trie.check_insertion(b"c", 3);
         trie.check_insertion(b"d", 4);
         trie.check_insertion(b"e", 5);
+    }
+
+    #[test]
+    fn it_can_store_more_than_16_parallel_entries() {
+        let mut trie = Trie::for_utf8();
+        trie.check_insertion(b"a", 1);
+        trie.check_insertion(b"c", 2);
+        trie.check_insertion(b"d", 3);
+        trie.check_insertion(b"e", 4);
+        trie.check_insertion(b"f", 5);
+        trie.check_insertion(b"g", 6);
+        trie.check_insertion(b"h", 7);
+        trie.check_insertion(b"i", 8);
+        trie.check_insertion(b"j", 9);
+        trie.check_insertion(b"k", 10);
+        trie.check_insertion(b"l", 11);
+        trie.check_insertion(b"m", 12);
+        trie.check_insertion(b"n", 13);
+        trie.check_insertion(b"o", 14);
+        trie.check_insertion(b"p", 15);
+        trie.check_insertion(b"q", 16);
+        trie.check_insertion(b"r", 17);
     }
 }
