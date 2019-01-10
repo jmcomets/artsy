@@ -33,9 +33,12 @@ def generate_entries(nb_entries, max_entry_length, yield_random_entries):
     else:
         yield from generate_sequential_entries(nb_entries, max_entry_length)
 
-def main(prefix, nb_entries, max_entry_length, yield_random_entries):
-    for i, key in enumerate(generate_entries(nb_entries, max_entry_length, yield_random_entries)):
-        print(f"{prefix} {key} {i}")
+def main(nb_entries, max_entry_length, yield_random_entries):
+    entries = list(generate_entries(nb_entries, max_entry_length, yield_random_entries))
+    for i, key in enumerate(entries):
+        print(f"put {key} {i}")
+    for key in entries:
+        print(f"get {key}")
 
 if __name__ == "__main__":
     import sys
@@ -48,7 +51,9 @@ if __name__ == "__main__":
             yield_random_entries = False
         else:
             yield_random_entries = True
-        prefix = "put"
         nb_entries = int(sys.argv[1]) if len(sys.argv) > 1 else 10
         max_entry_length = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-        main(prefix, nb_entries, max_entry_length, yield_random_entries)
+        try:
+            main(nb_entries, max_entry_length, yield_random_entries)
+        except KeyboardInterrupt:
+            pass
