@@ -401,7 +401,7 @@ impl<T> Node<T> {
                 ];
 
                 for (i, (&key, child)) in old_child_indices.iter().zip(old_children.iter_mut()).enumerate() {
-                    child_indices[i] = key;
+                    child_indices[key as usize] = i as u8;
                     mem::swap(child, &mut children[i]);
                 }
 
@@ -528,11 +528,17 @@ mod tests {
 
     trait TrieTestExtensions<T: Clone + PartialEq + Debug> {
         fn check_insertion(&mut self, key: &[u8], value: T);
+
+        fn check_existence(&mut self, key: &[u8], value: T);
     }
 
     impl<T: Clone + PartialEq + Debug> TrieTestExtensions<T> for Trie<T> {
         fn check_insertion(&mut self, key: &[u8], value: T) {
             self.insert(key, value.clone()).unwrap();
+            self.check_existence(key, value);
+        }
+
+        fn check_existence(&mut self, key: &[u8], value: T) {
             assert_eq!(self.get(key).unwrap(), Some(&value));
         }
     }
@@ -567,16 +573,24 @@ mod tests {
     #[test]
     fn it_can_store_more_than_4_parallel_entries() {
         let mut trie = Trie::for_utf8();
+        // 1) insert
         trie.check_insertion(b"a", 1);
         trie.check_insertion(b"b", 2);
         trie.check_insertion(b"c", 3);
         trie.check_insertion(b"d", 4);
         trie.check_insertion(b"e", 5);
+        // 2) verify
+        trie.check_existence(b"a", 1);
+        trie.check_existence(b"b", 2);
+        trie.check_existence(b"c", 3);
+        trie.check_existence(b"d", 4);
+        trie.check_existence(b"e", 5);
     }
 
     #[test]
     fn it_can_store_more_than_16_parallel_entries() {
         let mut trie = Trie::for_utf8();
+        // 1) insert
         trie.check_insertion(b"a", 1);
         trie.check_insertion(b"c", 2);
         trie.check_insertion(b"d", 3);
@@ -594,5 +608,23 @@ mod tests {
         trie.check_insertion(b"p", 15);
         trie.check_insertion(b"q", 16);
         trie.check_insertion(b"r", 17);
+        // 2) verify
+        trie.check_existence(b"a", 1);
+        trie.check_existence(b"c", 2);
+        trie.check_existence(b"d", 3);
+        trie.check_existence(b"e", 4);
+        trie.check_existence(b"f", 5);
+        trie.check_existence(b"g", 6);
+        trie.check_existence(b"h", 7);
+        trie.check_existence(b"i", 8);
+        trie.check_existence(b"j", 9);
+        trie.check_existence(b"k", 10);
+        trie.check_existence(b"l", 11);
+        trie.check_existence(b"m", 12);
+        trie.check_existence(b"n", 13);
+        trie.check_existence(b"o", 14);
+        trie.check_existence(b"p", 15);
+        trie.check_existence(b"q", 16);
+        trie.check_existence(b"r", 17);
     }
 }
