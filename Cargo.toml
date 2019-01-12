@@ -8,3 +8,6 @@ take_mut = "0.2.2"
 
 [features]
 no-simd = []
+
+[profile.release]
+debug = true
