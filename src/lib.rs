@@ -1,45 +1,31 @@
-#[cfg(not(feature = "no-simd"))]
-#[cfg(target_arch = "x86")]
-use std::arch::x86::{
-    _mm_cmpeq_epi8,
-    _mm_loadu_si128,
-    _mm_movemask_epi8,
-    _mm_set1_epi8,
-};
-
-#[cfg(not(feature = "no-simd"))]
-#[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::{
-    _mm_cmpeq_epi8,
-    _mm_loadu_si128,
-    _mm_movemask_epi8,
-    _mm_set1_epi8,
-};
-
 use std::mem;
 
-pub struct Trie<T> {
-    root: Option<NodeOrLeaf<T>>,
+mod node4;
+mod node16;
+mod node48;
+mod node256;
+
+pub struct Trie<'a, T> {
+    root: Option<NodeOrLeaf<'a, T>>,
     term: u8,
 }
 
-enum NodeOrLeaf<T> {
-    Node(Node<T>),
+pub(crate) enum NodeOrLeaf<'a, T: 'a> {
+    Node(Node<'a, T>),
     Leaf(T),
 }
-use crate::NodeOrLeaf::*;
 
-impl<T> NodeOrLeaf<T> {
-    fn as_node(&self) -> Option<&Node<T>> {
-        if let Node(ref node) = self {
+impl<'a, T> NodeOrLeaf<'a, T> {
+    fn as_node(&self) -> Option<&Node<'a, T>> {
+        if let NodeOrLeaf::Node(ref node) = self {
             Some(node)
         } else {
             None
         }
     }
 
-    fn as_node_mut(&mut self) -> Option<&mut Node<T>> {
-        if let Node(ref mut node) = self {
+    fn as_node_mut(&mut self) -> Option<&mut Node<'a, T>> {
+        if let NodeOrLeaf::Node(ref mut node) = self {
             Some(node)
         } else {
             None
@@ -47,7 +33,7 @@ impl<T> NodeOrLeaf<T> {
     }
 
     fn as_leaf(&self) -> Option<&T> {
-        if let Leaf(ref value) = self {
+        if let NodeOrLeaf::Leaf(ref value) = self {
             Some(value)
         } else {
             None
@@ -55,7 +41,7 @@ impl<T> NodeOrLeaf<T> {
     }
 
     fn to_leaf(self) -> Option<T> {
-        if let Leaf(value) = self {
+        if let NodeOrLeaf::Leaf(value) = self {
             Some(value)
         } else {
             None
@@ -63,42 +49,34 @@ impl<T> NodeOrLeaf<T> {
     }
 }
 
-enum Node<T> {
-    Node4 {
-        children: [Option<(u8, Box<NodeOrLeaf<T>>)>; 4],
-    },
-    Node16 {
-        child_indices: [u8; 16],
-        children: [Option<Box<NodeOrLeaf<T>>>; 16],
-        nb_children: u8,
-    },
-    Node48 {
-        child_indices: [u8; 256],
-        children: [Option<Box<NodeOrLeaf<T>>>; 48],
-        nb_children: u8,
-    },
-    Node256 {
-        children: [Option<Box<NodeOrLeaf<T>>>; 256]
-    },
+struct Node<'a, T: 'a>(Box<dyn NodeImpl<'a, T> + 'a>);
+
+trait NodeImpl<'a, T> {
+    fn insert_child(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<Option<NodeOrLeaf<'a, T>>, NodeOrLeaf<'a, T>>;
+
+    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<(), NodeOrLeaf<'a, T>>;
+
+    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>>;
+
+    fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a>;
 }
-use crate::Node::*;
 
 #[derive(Debug)]
 pub struct KeyContainsTerminator;
 
-impl<T> Trie<T> {
-    pub fn with_terminator(term: u8) -> Trie<T> {
+impl<'a, T> Trie<'a, T> {
+    pub fn with_terminator(term: u8) -> Trie<'a, T> {
         Trie {
             root: None,
             term: term,
         }
     }
 
-    pub fn for_ascii() -> Trie<T> {
+    pub fn for_ascii() -> Trie<'a, T> {
         Self::with_terminator(0)
     }
 
-    pub fn for_utf8() -> Trie<T> {
+    pub fn for_utf8() -> Trie<'a, T> {
         Self::with_terminator(0xff)
     }
 
@@ -119,11 +97,11 @@ impl<T> Trie<T> {
             None => {
                 let mut node = Node::new();
                 let inserted = node.insert(key, value, self.term);
-                self.root = Some(Node(node));
+                self.root = Some(NodeOrLeaf::Node(node));
                 inserted
             }
-            Some(Node(ref mut node)) => node.insert(key, value, self.term),
-            Some(Leaf(_))            => unreachable!(),
+            Some(NodeOrLeaf::Node(ref mut node)) => node.insert(key, value, self.term),
+            Some(NodeOrLeaf::Leaf(_))            => unreachable!(),
         }
     }
 
@@ -141,9 +119,9 @@ impl<T> Trie<T> {
 
     fn contains_impl(&self, key: &[u8]) -> bool {
         match self.root {
-            None                 => false,
-            Some(Node(ref node)) => node.contains(key, self.term),
-            Some(Leaf(_))        => unreachable!(),
+            None                             => false,
+            Some(NodeOrLeaf::Node(ref node)) => node.contains(key, self.term),
+            Some(NodeOrLeaf::Leaf(_))        => unreachable!(),
         }
     }
 
@@ -161,9 +139,9 @@ impl<T> Trie<T> {
 
     fn get_impl(&self, key: &[u8]) -> Option<&T> {
         match self.root {
-            None                 => None,
-            Some(Node(ref node)) => node.get(key, self.term),
-            Some(Leaf(_))        => unreachable!(),
+            None                             => None,
+            Some(NodeOrLeaf::Node(ref node)) => node.get(key, self.term),
+            Some(NodeOrLeaf::Leaf(_))        => unreachable!(),
         }
     }
 
@@ -172,17 +150,17 @@ impl<T> Trie<T> {
     }
 }
 
-impl<T> Node<T> {
+impl<'a, T> Node<'a, T> {
     fn new() -> Self {
-        Node4 { children: [None, None, None, None] }
+        Node(Box::new(node4::Node4::new()))
     }
 
     fn insert(&mut self, key: &[u8], value: T, term: u8) -> Option<T> {
         if key.is_empty() {
-            self.insert_child(term, Leaf(value))
+            self.insert_child(term, NodeOrLeaf::Leaf(value))
                 .map(|n| n.to_leaf().unwrap())
         } else {
-            self.insert_child_if_not_exists(key[0], Node(Node::new()));
+            self.insert_child_if_not_exists(key[0], NodeOrLeaf::Node(Node::new()));
             let child = self.find_child_mut(key[0]).unwrap().as_node_mut().unwrap();
             child.insert(&key[1..], value, term)
         }
@@ -203,300 +181,35 @@ impl<T> Node<T> {
         }
     }
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<T>) {
-        match self {
-            Node4 { children } => {
-                // 1st step: try to replace existing entry
-                for existing_child in children.iter_mut() {
-                    if let Some((k, _)) = existing_child {
-                        if key == *k {
-                            return;
-                        }
-                    }
-                }
-
-                // 2nd step: try to add a new entry
-                for existing_child in children.iter_mut() {
-                    if existing_child.is_none() {
-                        *existing_child = Some((key, Box::new(child)));
-                        return;
-                    }
-                }
-            }
-
-            Node16 { child_indices, children, nb_children } => {
-                if let Some(_) = node16_find_child_index(child_indices, *nb_children as usize, key) {
-                    return;
-                } else {
-                    // If we're adding a new entry, there should be less than 16 entries.
-                    if *nb_children < 16 {
-                        child_indices[*nb_children as usize] = key;
-                        children[*nb_children as usize] = Some(Box::new(child));
-                        *nb_children += 1;
-                        return;
-                    }
-                }
-            }
-
-            Node48 { child_indices, children, nb_children } => {
-                let ref mut index = child_indices[key as usize];
-                if *index >= 48 {
-                    // If we're adding a new entry, there should be less than 48 entries.
-                    if *nb_children < 48 {
-                        *index = *nb_children;
-                        children[*index as usize] = Some(Box::new(child));
-                        *nb_children += 1;
-                        return;
-                    }
-                } else {
-                    return;
-                }
-            }
-
-            Node256 { children } => {
-                if let Some(_) = children[key as usize].as_mut() {
-                    return;
-                }
-
-                children[key as usize] = Some(Box::new(child));
-                return;
-            }
-        }
-
-        // Insert did not succeed? Upgrade and retry.
-        take_mut::take(self, Self::upgrade);
-        self.insert_child_if_not_exists(key, child)
+    fn upgrade(&mut self) {
+        take_mut::take(&mut self.0, NodeImpl::upgrade);
     }
 
-    fn insert_child(&mut self, key: u8, mut child: NodeOrLeaf<T>) -> Option<NodeOrLeaf<T>> {
-        match self {
-            Node4 { children } => {
-                // 1st step: try to replace existing entry
-                for existing_child in children.iter_mut() {
-                    if let Some((k, existing_child)) = existing_child {
-                        if key == *k {
-                            mem::swap(&mut child, existing_child);
-                            return Some(child);
-                        }
-                    }
-                }
-
-                // 2nd step: try to add a new entry
-                for existing_child in children.iter_mut() {
-                    if existing_child.is_none() {
-                        *existing_child = Some((key, Box::new(child)));
-                        return None;
-                    }
-                }
-            }
-
-            Node16 { child_indices, children, nb_children } => {
-                if let Some(index) = node16_find_child_index(child_indices, *nb_children as usize, key) {
-                    mem::swap(&mut child, children[index as usize].as_mut().unwrap());
-                    return Some(child);
-                } else {
-                    // If we're adding a new entry, there should be less than 16 entries.
-                    if *nb_children < 16 {
-                        child_indices[*nb_children as usize] = key;
-                        children[*nb_children as usize] = Some(Box::new(child));
-                        *nb_children += 1;
-                        return None;
-                    }
-                }
-            }
-
-            Node48 { child_indices, children, nb_children } => {
-                let ref mut index = child_indices[key as usize];
-                if *index >= 48 {
-                    // If we're adding a new entry, there should be less than 48 entries.
-                    if *nb_children < 48 {
-                        *index = *nb_children;
-                        children[*index as usize] = Some(Box::new(child));
-                        *nb_children += 1;
-                        return None;
-                    }
-                } else {
-                    mem::swap(&mut child, children[*index as usize].as_mut().unwrap());
-                    return Some(child);
-                }
-            }
-
-            Node256 { children } => {
-                if let Some(existing_child) = children[key as usize].as_mut() {
-                    mem::swap(&mut child, existing_child);
-                    return Some(child);
-                }
-
-                children[key as usize] = Some(Box::new(child));
-                return None;
-            }
+    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) {
+        let result = self.0.insert_child_if_not_exists(key, child);
+        if let Err(child) = result {
+            self.upgrade();
+            self.insert_child_if_not_exists(key, child)
         }
-
-        // Insert did not succeed? Upgrade and retry.
-        take_mut::take(self, Self::upgrade);
-        self.insert_child(key, child)
     }
 
-    fn upgrade(self) -> Self {
-        match self {
-            Node4 { mut children } => {
-                let (key_0, child_0) = children[0].take().unwrap();
-                let (key_1, child_1) = children[1].take().unwrap();
-                let (key_2, child_2) = children[2].take().unwrap();
-                let (key_3, child_3) = children[3].take().unwrap();
-
-                Node16 {
-                    child_indices: {
-                        let mut child_indices = [0; 16];
-                        child_indices[0] = key_0;
-                        child_indices[1] = key_1;
-                        child_indices[2] = key_2;
-                        child_indices[3] = key_3;
-                        child_indices
-                    },
-                    children: {
-                        let mut children: [Option<Box<NodeOrLeaf<T>>>; 16] = Default::default();
-                        children[0] = Some(child_0);
-                        children[1] = Some(child_1);
-                        children[2] = Some(child_2);
-                        children[3] = Some(child_3);
-                        children
-                    },
-                    nb_children: 4,
-                }
-            }
-
-            Node16 { child_indices: old_child_indices, children: mut old_children, .. } => {
-                let mut child_indices = [48; 256];
-                let mut children: [Option<Box<NodeOrLeaf<T>>>; 48] = [
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                    None, None, None, None, None, None,
-                ];
-
-                for (i, (&key, child)) in old_child_indices.iter().zip(old_children.iter_mut()).enumerate() {
-                    child_indices[key as usize] = i as u8;
-                    mem::swap(child, &mut children[i]);
-                }
-
-                Node48 {
-                    child_indices: child_indices,
-                    children: children,
-                    nb_children: 16,
-                }
-            }
-
-            Node48 { child_indices, children: mut old_children, .. } => {
-                let mut children: [Option<Box<NodeOrLeaf<T>>>; 256] = [
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                    None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                ];
-
-                for i in child_indices.iter() {
-                    mem::swap(&mut children[*i as usize], &mut old_children[child_indices[*i as usize] as usize]);
-                }
-
-                Node256 {
-                    children: children,
-                }
-            }
-
-            Node256 { .. } => {
-                unreachable!();
+    fn insert_child(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Option<NodeOrLeaf<'a, T>> {
+        let result = self.0.insert_child(key, child);
+        match result {
+            Ok(replaced_child) => replaced_child,
+            Err(child)         => {
+                self.upgrade();
+                self.insert_child(key, child)
             }
         }
     }
 
-    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<T>> {
-        match self {
-            Node4 { children } => {
-                for child in children.iter() {
-                    if let Some((k, child)) = child {
-                        if key == *k {
-                            return Some(&child);
-                        }
-                    }
-                }
-                None
-            }
-
-            Node16 { child_indices, children, nb_children } => {
-                if let Some(index) = node16_find_child_index(child_indices, *nb_children as usize, key) {
-                    children[index as usize].as_ref().map(|x| &**x)
-                } else {
-                    None
-                }
-            }
-
-            Node48 { child_indices, children, .. } => {
-                let index = child_indices[key as usize];
-                if index < 48 {
-                    children[index as usize].as_ref().map(|x| &**x)
-                } else {
-                    None
-                }
-            }
-
-            Node256 { children } => {
-                children[key as usize].as_ref().map(|x| &**x)
-            }
-        }
+    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>> {
+        self.0.find_child(key)
     }
 
-    fn find_child_mut(&mut self, key: u8) -> Option<&mut NodeOrLeaf<T>> {
+    fn find_child_mut(&mut self, key: u8) -> Option<&mut NodeOrLeaf<'_, T>> {
         unsafe { mem::transmute(self.find_child(key)) }
-    }
-}
-
-#[cfg(feature = "no-simd")]
-fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
-    for i in 0..nb_children {
-        if child_indices[i] == key {
-            return Some(i);
-        }
-    }
-    None
-}
-
-#[cfg(not(feature = "no-simd"))]
-fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
-    // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
-    // position in `child_indices` that needs to be searched.
-    let key_vec = unsafe { _mm_set1_epi8(key as i8) };
-    let indices_vec = unsafe { _mm_loadu_si128(child_indices.as_ptr() as *const _) };
-
-    // Compare all `child_indices` in parallel. Don't worry if some of the keys
-    // aren't valid, we'll mask the results to only consider the valid ones below.
-    let matches = unsafe { _mm_cmpeq_epi8(key_vec, indices_vec) };
-
-    // Apply a mask to select only the first `nb_children` values.
-    let mask = (1 << nb_children) - 1;
-    let match_bits = unsafe { _mm_movemask_epi8(matches) & mask };
-
-    // The child's index is the first '1' in `match_bits`
-    if match_bits != 0 {
-        Some(match_bits.trailing_zeros() as usize)
-    } else {
-        None
     }
 }
 
@@ -511,7 +224,7 @@ mod tests {
         fn check_existence(&mut self, key: &[u8], value: T);
     }
 
-    impl<T: Clone + PartialEq + Debug> TrieTestExtensions<T> for Trie<T> {
+    impl<'a, T: 'a + Clone + PartialEq + Debug> TrieTestExtensions<T> for Trie<'a, T> {
         fn check_insertion(&mut self, key: &[u8], value: T) {
             self.insert(key, value.clone()).unwrap();
             self.check_existence(key, value);

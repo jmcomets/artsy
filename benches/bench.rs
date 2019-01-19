@@ -1,6 +1,6 @@
 #![feature(test)]
 
-extern crate artsy;
+
 extern crate test;
 
 use test::Bencher;
