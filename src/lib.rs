@@ -1,5 +1,3 @@
-extern crate take_mut;
-
 #[cfg(not(feature = "no-simd"))]
 #[cfg(target_arch = "x86")]
 use std::arch::x86::{
@@ -29,7 +27,7 @@ enum NodeOrLeaf<T> {
     Node(Node<T>),
     Leaf(T),
 }
-use NodeOrLeaf::*;
+use crate::NodeOrLeaf::*;
 
 impl<T> NodeOrLeaf<T> {
     fn as_node(&self) -> Option<&Node<T>> {
@@ -83,7 +81,7 @@ enum Node<T> {
         children: [Option<Box<NodeOrLeaf<T>>>; 256]
     },
 }
-use Node::*;
+use crate::Node::*;
 
 #[derive(Debug)]
 pub struct KeyContainsTerminator;

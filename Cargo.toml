@@ -2,6 +2,7 @@
 name = "artsy"
 version = "0.1.0"
 authors = ["Jean-Marie Comets <jean.marie.comets@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 take_mut = "0.2.2"
