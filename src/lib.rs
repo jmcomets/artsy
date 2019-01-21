@@ -48,28 +48,9 @@ impl<T> NodeOrLeaf<T> {
         }
     }
 
-    #[allow(dead_code)]
     fn as_leaf(&self) -> Option<&T> {
         if let Leaf(ref value) = self {
             Some(value)
-        } else {
-            None
-        }
-    }
-
-    #[allow(dead_code)]
-    fn as_leaf_mut(&mut self) -> Option<&mut T> {
-        if let Leaf(ref mut value) = self {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    #[allow(dead_code)]
-    fn to_node(self) -> Option<Node<T>> {
-        if let Node(node) = self {
-            Some(node)
         } else {
             None
         }
