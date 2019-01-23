@@ -1,56 +1,5 @@
 use std::mem;
 
-mod node4;
-mod node16;
-mod node48;
-mod node256;
-
-pub struct Trie<'a, T> {
-    root: Option<NodeOrLeaf<'a, T>>,
-    term: u8,
-}
-
-pub(crate) enum NodeOrLeaf<'a, T: 'a> {
-    Node(Node<'a, T>),
-    Leaf(T),
-}
-
-impl<'a, T> NodeOrLeaf<'a, T> {
-    fn as_node(&self) -> Option<&Node<'a, T>> {
-        if let NodeOrLeaf::Node(ref node) = self {
-            Some(node)
-        } else {
-            None
-        }
-    }
-
-    fn as_node_mut(&mut self) -> Option<&mut Node<'a, T>> {
-        if let NodeOrLeaf::Node(ref mut node) = self {
-            Some(node)
-        } else {
-            None
-        }
-    }
-
-    fn as_leaf(&self) -> Option<&T> {
-        if let NodeOrLeaf::Leaf(ref value) = self {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    fn to_leaf(self) -> Option<T> {
-        if let NodeOrLeaf::Leaf(value) = self {
-            Some(value)
-        } else {
-            None
-        }
-    }
-}
-
-struct Node<'a, T: 'a>(Box<dyn NodeImpl<'a, T> + 'a>);
-
 trait NodeImpl<'a, T> {
     fn insert_child(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<Option<NodeOrLeaf<'a, T>>, NodeOrLeaf<'a, T>>;
 
@@ -59,6 +8,35 @@ trait NodeImpl<'a, T> {
     fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>>;
 
     fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a>;
+}
+
+#[cfg(feature = "node4")]
+mod node4;
+
+#[cfg(feature = "node4")]
+use self::node4::Node4 as DefaultNode;
+
+#[cfg(feature = "node16")]
+mod node16;
+
+#[cfg(all(not(feature = "node4"), feature = "node16"))]
+use self::node16::Node16 as DefaultNode;
+
+#[cfg(feature = "node48")]
+mod node48;
+
+#[cfg(all(not(feature = "node4"), not(feature = "node16"), feature = "node48"))]
+use self::node48::Node48 as DefaultNode;
+
+// always included
+mod node256;
+
+#[cfg(all(not(feature = "node4"), not(feature = "node16"), not(feature = "node48")))]
+use self::node256::Node256 as DefaultNode;
+
+pub struct Trie<'a, T> {
+    root: Option<NodeOrLeaf<'a, T>>,
+    term: u8,
 }
 
 #[derive(Debug)]
@@ -150,9 +128,11 @@ impl<'a, T> Trie<'a, T> {
     }
 }
 
+struct Node<'a, T: 'a>(Box<dyn NodeImpl<'a, T> + 'a>);
+
 impl<'a, T> Node<'a, T> {
     fn new() -> Self {
-        Node(Box::new(node4::Node4::new()))
+        Node(Box::new(DefaultNode::default()))
     }
 
     fn insert(&mut self, key: &[u8], value: T, term: u8) -> Option<T> {
@@ -210,6 +190,45 @@ impl<'a, T> Node<'a, T> {
 
     fn find_child_mut(&mut self, key: u8) -> Option<&mut NodeOrLeaf<'_, T>> {
         unsafe { mem::transmute(self.find_child(key)) }
+    }
+}
+
+pub(crate) enum NodeOrLeaf<'a, T: 'a> {
+    Node(Node<'a, T>),
+    Leaf(T),
+}
+
+impl<'a, T> NodeOrLeaf<'a, T> {
+    fn as_node(&self) -> Option<&Node<'a, T>> {
+        if let NodeOrLeaf::Node(ref node) = self {
+            Some(node)
+        } else {
+            None
+        }
+    }
+
+    fn as_node_mut(&mut self) -> Option<&mut Node<'a, T>> {
+        if let NodeOrLeaf::Node(ref mut node) = self {
+            Some(node)
+        } else {
+            None
+        }
+    }
+
+    fn as_leaf(&self) -> Option<&T> {
+        if let NodeOrLeaf::Leaf(ref value) = self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    fn to_leaf(self) -> Option<T> {
+        if let NodeOrLeaf::Leaf(value) = self {
+            Some(value)
+        } else {
+            None
+        }
     }
 }
 

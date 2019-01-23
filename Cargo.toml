@@ -8,7 +8,11 @@ edition = "2018"
 take_mut = "0.2.2"
 
 [features]
+default = ["node4", "node16", "node48"]
 no-simd = []
+node4 = []
+node16 = []
+node48 = []
 
 [profile.release]
 debug = true

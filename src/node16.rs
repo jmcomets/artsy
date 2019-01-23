@@ -23,7 +23,11 @@ use super::{
     NodeImpl,
 };
 
+#[cfg(feature = "node48")]
 use crate::node48::Node48;
+
+#[cfg(not(feature = "node48"))]
+use crate::node256::Node256;
 
 pub(crate) struct Node16<'a, T> {
     child_indices: [u8; 16],
@@ -31,9 +35,76 @@ pub(crate) struct Node16<'a, T> {
     nb_children: u8,
 }
 
+impl<'a, T> Default for Node16<'a, T> {
+    fn default() -> Self {
+        Node16 {
+            child_indices: [0; 16],
+            children: [
+                None, None, None, None,
+                None, None, None, None,
+                None, None, None, None,
+                None, None, None, None,
+            ],
+            nb_children: 0
+        }
+    }
+}
+
 impl<'a, T> Node16<'a, T> {
+    #[cfg(feature = "node4")]
     pub fn new(child_indices: [u8; 16], children: [Option<Box<NodeOrLeaf<'a, T>>>; 16], nb_children: u8) -> Self {
         Node16 { child_indices, children, nb_children }
+    }
+
+    #[cfg(feature = "node48")]
+    fn upgrade_to_node48(mut self: Box<Self>) -> Box<Node48<'a, T>> {
+        let mut child_indices = [48; 256];
+        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 48] = [
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+            None, None, None, None, None, None,
+        ];
+
+        for i in 0..self.child_indices.len() {
+            child_indices[self.child_indices[i] as usize] = i as u8;
+            mem::swap(&mut self.children[i], &mut children[i]);
+        }
+
+        Box::new(Node48::new(child_indices, children, 16))
+    }
+
+    #[cfg(not(feature = "node48"))]
+    fn upgrade_to_node256(mut self: Box<Self>) -> Box<Node256<'a, T>> {
+        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 256] = [
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        ];
+
+        for i in 0..self.child_indices.len() {
+            let key = self.child_indices[i] as usize;
+            mem::swap(&mut children[key], &mut self.children[i]);
+        }
+
+        Box::new(Node256::new(children))
     }
 }
 
@@ -71,25 +142,14 @@ impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
         Err(child)
     }
 
-    fn upgrade(mut self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a> {
-        let mut child_indices = [48; 256];
-        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 48] = [
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-            None, None, None, None, None, None,
-        ];
-
-        for i in 0..self.child_indices.len() {
-            child_indices[self.child_indices[i] as usize] = i as u8;
-            mem::swap(&mut self.children[i], &mut children[i]);
+    fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a> {
+        #[cfg(feature = "node48")] {
+            self.upgrade_to_node48()
         }
 
-        Box::new(Node48::new(child_indices, children, 16))
+        #[cfg(not(feature = "node48"))] {
+            self.upgrade_to_node256()
+        }
     }
 
     fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>> {

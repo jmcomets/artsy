@@ -9,7 +9,33 @@ pub(crate) struct Node256<'a, T> {
     children: [Option<Box<NodeOrLeaf<'a, T>>>; 256]
 }
 
+impl<'a, T> Default for Node256<'a, T> {
+    fn default() -> Self {
+        Node256 {
+            children: [
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            ]
+        }
+    }
+}
+
 impl<'a, T> Node256<'a, T> {
+    #[cfg(any(feature = "node4", feature = "node16", feature = "node48"))]
     pub fn new(children: [Option<Box<NodeOrLeaf<'a, T>>>; 256]) -> Self {
         Node256 { children }
     }
