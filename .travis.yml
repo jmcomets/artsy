@@ -1,0 +1,19 @@
+language: rust
+sudo: false
+matrix:
+  include:
+    - rust: stable
+branches:
+  only:
+    - master
+script:
+  - |
+      cargo test --verbose &&
+      cargo test --verbose --no-default-features --features "node4" &&
+      cargo test --verbose --no-default-features --features "node4 node16" &&
+      cargo test --verbose --no-default-features --features "node4 node48" &&
+      cargo test --verbose --no-default-features --features "node4 node16 node48" &&
+      cargo test --verbose --no-default-features --features "node16" &&
+      cargo test --verbose --no-default-features --features "node16 node48" &&
+      cargo test --verbose --no-default-features --features "node48" &&
+      cargo test --verbose --no-default-features
