@@ -19,7 +19,7 @@ use std::arch::x86_64::{
 };
 
 use super::{
-    NodeOrLeaf,
+    Child,
     NodeImpl,
 };
 
@@ -31,7 +31,7 @@ use crate::node256::Node256;
 
 pub(crate) struct Node16<'a, T> {
     child_indices: [u8; 16],
-    children: [Option<Box<NodeOrLeaf<'a, T>>>; 16],
+    children: [Option<Box<Child<'a, T>>>; 16],
     nb_children: u8,
 }
 
@@ -52,14 +52,14 @@ impl<'a, T> Default for Node16<'a, T> {
 
 impl<'a, T> Node16<'a, T> {
     #[cfg(feature = "node4")]
-    pub fn new(child_indices: [u8; 16], children: [Option<Box<NodeOrLeaf<'a, T>>>; 16], nb_children: u8) -> Self {
+    pub fn new(child_indices: [u8; 16], children: [Option<Box<Child<'a, T>>>; 16], nb_children: u8) -> Self {
         Node16 { child_indices, children, nb_children }
     }
 
     #[cfg(feature = "node48")]
     fn upgrade_to_node48(mut self: Box<Self>) -> Box<Node48<'a, T>> {
         let mut child_indices = [48; 256];
-        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 48] = [
+        let mut children: [Option<Box<Child<'a, T>>>; 48] = [
             None, None, None, None, None, None,
             None, None, None, None, None, None,
             None, None, None, None, None, None,
@@ -80,7 +80,7 @@ impl<'a, T> Node16<'a, T> {
 
     #[cfg(not(feature = "node48"))]
     fn upgrade_to_node256(mut self: Box<Self>) -> Box<Node256<'a, T>> {
-        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 256] = [
+        let mut children: [Option<Box<Child<'a, T>>>; 256] = [
             None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
             None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
             None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
@@ -109,7 +109,7 @@ impl<'a, T> Node16<'a, T> {
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
-    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<(), NodeOrLeaf<'a, T>> {
+    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
         if let Some(_) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
             return Ok(());
         } else {
@@ -125,7 +125,7 @@ impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
         Err(child)
     }
 
-    fn insert_child(&mut self, key: u8, mut child: NodeOrLeaf<'a, T>) -> Result<Option<NodeOrLeaf<'a, T>>, NodeOrLeaf<'a, T>> {
+    fn insert_child(&mut self, key: u8, mut child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>> {
         if let Some(index) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
             mem::swap(&mut child, self.children[index as usize].as_mut().unwrap());
             return Ok(Some(child));
@@ -152,7 +152,7 @@ impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
         }
     }
 
-    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>> {
+    fn find_child(&self, key: u8) -> Option<&Child<'a, T>> {
         if let Some(index) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
             self.children[index as usize].as_ref().map(|x| &**x)
         } else {

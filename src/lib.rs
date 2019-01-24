@@ -1,11 +1,11 @@
 use std::mem;
 
 trait NodeImpl<'a, T> {
-    fn insert_child(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<Option<NodeOrLeaf<'a, T>>, NodeOrLeaf<'a, T>>;
+    fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>>;
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<(), NodeOrLeaf<'a, T>>;
+    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>>;
 
-    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>>;
+    fn find_child(&self, key: u8) -> Option<&Child<'a, T>>;
 
     fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a>;
 }
@@ -35,7 +35,7 @@ mod node256;
 use self::node256::Node256 as DefaultNode;
 
 pub struct Trie<'a, T> {
-    root: Option<NodeOrLeaf<'a, T>>,
+    root: Option<Child<'a, T>>,
     term: u8,
 }
 
@@ -75,11 +75,11 @@ impl<'a, T> Trie<'a, T> {
             None => {
                 let mut node = Node::new();
                 let inserted = node.insert(key, value, self.term);
-                self.root = Some(NodeOrLeaf::Node(node));
+                self.root = Some(Child::Node(node));
                 inserted
             }
-            Some(NodeOrLeaf::Node(ref mut node)) => node.insert(key, value, self.term),
-            Some(NodeOrLeaf::Leaf(_))            => unreachable!(),
+            Some(Child::Node(ref mut node)) => node.insert(key, value, self.term),
+            Some(Child::Leaf(_))            => unreachable!(),
         }
     }
 
@@ -98,8 +98,8 @@ impl<'a, T> Trie<'a, T> {
     fn contains_impl(&self, key: &[u8]) -> bool {
         match self.root {
             None                             => false,
-            Some(NodeOrLeaf::Node(ref node)) => node.contains(key, self.term),
-            Some(NodeOrLeaf::Leaf(_))        => unreachable!(),
+            Some(Child::Node(ref node)) => node.contains(key, self.term),
+            Some(Child::Leaf(_))        => unreachable!(),
         }
     }
 
@@ -118,8 +118,8 @@ impl<'a, T> Trie<'a, T> {
     fn get_impl(&self, key: &[u8]) -> Option<&T> {
         match self.root {
             None                             => None,
-            Some(NodeOrLeaf::Node(ref node)) => node.get(key, self.term),
-            Some(NodeOrLeaf::Leaf(_))        => unreachable!(),
+            Some(Child::Node(ref node)) => node.get(key, self.term),
+            Some(Child::Leaf(_))        => unreachable!(),
         }
     }
 
@@ -137,10 +137,10 @@ impl<'a, T> Node<'a, T> {
 
     fn insert(&mut self, key: &[u8], value: T, term: u8) -> Option<T> {
         if key.is_empty() {
-            self.insert_child(term, NodeOrLeaf::Leaf(value))
+            self.insert_child(term, Child::Leaf(value))
                 .map(|n| n.to_leaf().unwrap())
         } else {
-            self.insert_child_if_not_exists(key[0], NodeOrLeaf::Node(Node::new()));
+            self.insert_child_if_not_exists(key[0], Child::Node(Node::new()));
             let child = self.find_child_mut(key[0]).unwrap().as_node_mut().unwrap();
             child.insert(&key[1..], value, term)
         }
@@ -161,7 +161,7 @@ impl<'a, T> Node<'a, T> {
         }
     }
 
-    fn insert_child(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Option<NodeOrLeaf<'a, T>> {
+    fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Option<Child<'a, T>> {
         let result = self.0.insert_child(key, child);
         match result {
             Ok(replaced_child) => replaced_child,
@@ -172,7 +172,7 @@ impl<'a, T> Node<'a, T> {
         }
     }
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) {
+    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) {
         let result = self.0.insert_child_if_not_exists(key, child);
         if let Err(child) = result {
             self.upgrade();
@@ -180,7 +180,7 @@ impl<'a, T> Node<'a, T> {
         }
     }
 
-    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>> {
+    fn find_child(&self, key: u8) -> Option<&Child<'a, T>> {
         self.0.find_child(key)
     }
 
@@ -188,19 +188,19 @@ impl<'a, T> Node<'a, T> {
         take_mut::take(&mut self.0, NodeImpl::upgrade);
     }
 
-    fn find_child_mut(&mut self, key: u8) -> Option<&mut NodeOrLeaf<'_, T>> {
+    fn find_child_mut(&mut self, key: u8) -> Option<&mut Child<'_, T>> {
         unsafe { mem::transmute(self.find_child(key)) }
     }
 }
 
-pub(crate) enum NodeOrLeaf<'a, T: 'a> {
+pub(crate) enum Child<'a, T: 'a> {
     Node(Node<'a, T>),
     Leaf(T),
 }
 
-impl<'a, T> NodeOrLeaf<'a, T> {
+impl<'a, T> Child<'a, T> {
     fn as_node(&self) -> Option<&Node<'a, T>> {
-        if let NodeOrLeaf::Node(ref node) = self {
+        if let Child::Node(ref node) = self {
             Some(node)
         } else {
             None
@@ -208,7 +208,7 @@ impl<'a, T> NodeOrLeaf<'a, T> {
     }
 
     fn as_node_mut(&mut self) -> Option<&mut Node<'a, T>> {
-        if let NodeOrLeaf::Node(ref mut node) = self {
+        if let Child::Node(ref mut node) = self {
             Some(node)
         } else {
             None
@@ -216,7 +216,7 @@ impl<'a, T> NodeOrLeaf<'a, T> {
     }
 
     fn as_leaf(&self) -> Option<&T> {
-        if let NodeOrLeaf::Leaf(ref value) = self {
+        if let Child::Leaf(ref value) = self {
             Some(value)
         } else {
             None
@@ -224,7 +224,7 @@ impl<'a, T> NodeOrLeaf<'a, T> {
     }
 
     fn to_leaf(self) -> Option<T> {
-        if let NodeOrLeaf::Leaf(value) = self {
+        if let Child::Leaf(value) = self {
             Some(value)
         } else {
             None

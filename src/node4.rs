@@ -1,7 +1,7 @@
 use std::mem;
 
 use super::{
-    NodeOrLeaf,
+    Child,
     NodeImpl,
 };
 
@@ -15,7 +15,7 @@ use crate::node48::Node48;
 use crate::node256::Node256;
 
 pub struct Node4<'a, T> {
-    children: [Option<(u8, Box<NodeOrLeaf<'a, T>>)>; 4],
+    children: [Option<(u8, Box<Child<'a, T>>)>; 4],
 }
 
 impl<'a, T> Default for Node4<'a, T> {
@@ -42,7 +42,7 @@ impl<'a, T> Node4<'a, T> {
         };
 
         let children = {
-            let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 16] = Default::default();
+            let mut children: [Option<Box<Child<'a, T>>>; 16] = Default::default();
             children[0] = Some(child_0);
             children[1] = Some(child_1);
             children[2] = Some(child_2);
@@ -61,7 +61,7 @@ impl<'a, T> Node4<'a, T> {
         let (key_3, child_3) = self.children[3].take().unwrap();
 
         let mut child_indices = [48; 256];
-        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 48] = [
+        let mut children: [Option<Box<Child<'a, T>>>; 48] = [
             None, None, None, None, None, None,
             None, None, None, None, None, None,
             None, None, None, None, None, None,
@@ -87,7 +87,7 @@ impl<'a, T> Node4<'a, T> {
         let (key_2, child_2) = self.children[2].take().unwrap();
         let (key_3, child_3) = self.children[3].take().unwrap();
 
-        let mut children: [Option<Box<NodeOrLeaf<'a, T>>>; 256] = [
+        let mut children: [Option<Box<Child<'a, T>>>; 256] = [
             None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
             None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
             None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None,
@@ -116,7 +116,7 @@ impl<'a, T> Node4<'a, T> {
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node4<'a, T> {
-    fn insert_child(&mut self, key: u8, mut child: NodeOrLeaf<'a, T>) -> Result<Option<NodeOrLeaf<'a, T>>, NodeOrLeaf<'a, T>> {
+    fn insert_child(&mut self, key: u8, mut child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>> {
         // 1st step: try to replace existing entry
         for existing_child in self.children.iter_mut() {
             if let Some((k, existing_child)) = existing_child {
@@ -138,7 +138,7 @@ impl<'a, T> NodeImpl<'a, T> for Node4<'a, T> {
         Err(child)
     }
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Result<(), NodeOrLeaf<'a, T>> {
+    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
         // 1st step: try to replace existing entry
         for existing_child in self.children.iter_mut() {
             if let Some((k, _)) = existing_child {
@@ -173,7 +173,7 @@ impl<'a, T> NodeImpl<'a, T> for Node4<'a, T> {
         }
     }
 
-    fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>> {
+    fn find_child(&self, key: u8) -> Option<&Child<'a, T>> {
         for child in self.children.iter() {
             if let Some((k, child)) = child {
                 if key == *k {
