@@ -1,8 +1,10 @@
 use std::mem;
 
-use super::{
+use crate::{
     Child,
     NodeImpl,
+    UpgradeNeeded,
+    Entry,
 };
 
 pub(crate) struct Node256<'a, T> {
@@ -42,30 +44,36 @@ impl<'a, T> Node256<'a, T> {
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node256<'a, T> {
-    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
-        if let Some(_) = self.children[key as usize].as_mut() {
+    fn find(&self, key: u8) -> Option<&Child<'a, T>> {
+        self.children[key as usize].as_ref().map(|x| &**x)
+    }
+
+    fn entry(&mut self, key: u8) -> Result<Entry<'a, T>, UpgradeNeeded> {
+        unimplemented!();
+
+        /*
+        fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
+            if let Some(_) = self.children[key as usize].as_mut() {
+                return Ok(());
+            }
+
+            self.children[key as usize] = Some(Box::new(child));
             return Ok(());
         }
 
-        self.children[key as usize] = Some(Box::new(child));
-        return Ok(());
-    }
+        fn insert_child(&mut self, key: u8, mut child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>> {
+            if let Some(existing_child) = self.children[key as usize].as_mut() {
+                mem::swap(&mut child, existing_child);
+                return Ok(Some(child));
+            }
 
-    fn insert_child(&mut self, key: u8, mut child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>> {
-        if let Some(existing_child) = self.children[key as usize].as_mut() {
-            mem::swap(&mut child, existing_child);
-            return Ok(Some(child));
+            self.children[key as usize] = Some(Box::new(child));
+            Ok(None)
         }
-
-        self.children[key as usize] = Some(Box::new(child));
-        Ok(None)
+        */
     }
 
     fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a> {
         unreachable!();
-    }
-
-    fn find_child(&self, key: u8) -> Option<&Child<'a, T>> {
-        self.children[key as usize].as_ref().map(|x| &**x)
     }
 }

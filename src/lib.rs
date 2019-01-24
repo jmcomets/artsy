@@ -1,13 +1,58 @@
 use std::mem;
 
 trait NodeImpl<'a, T> {
-    fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>>;
+    fn find(&self, key: u8) -> Option<&Child<'a, T>>;
 
-    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>>;
-
-    fn find_child(&self, key: u8) -> Option<&Child<'a, T>>;
+    fn entry(&mut self, key: u8) -> Result<Entry<'a, T>, UpgradeNeeded>;
 
     fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a>;
+}
+
+#[derive(Debug)]
+struct UpgradeNeeded;
+
+pub(crate) enum Entry<'a, T> {
+    Occupied(Box<dyn OccupiedEntry<'a, T>>),
+    Vacant(Box<dyn VacantEntry<'a, T>>),
+}
+
+pub(crate) trait OccupiedEntry<'a, T> {
+    fn insert(&mut self, child: Child<'a, T>) -> Child<'a, T>;
+}
+
+pub(crate) trait VacantEntry<'a, T> {
+    fn insert(&mut self, child: Child<'a, T>) -> Option<Child<'a, T>>;
+}
+
+impl<'a, T> Entry<'a, T> {
+    pub fn or_insert(self, default: Child<'a, T>) -> &'a mut Child<'a, T> {
+        self.or_insert_with(|| default)
+    }
+
+    pub fn or_insert_with<F>(self, default: F) -> &'a mut Child<'a, T>
+        where F: FnOnce() -> Child<'a, T>,
+    {
+        unimplemented!();
+    }
+
+    pub fn replace(&mut self, child: Child<'a, T>) -> Option<Child<'a, T>> {
+        self.replace_with(|| child)
+    }
+
+    pub fn replace_with<F>(&mut self, child: F) -> Option<Child<'a, T>>
+        where F: FnOnce() -> Child<'a, T>,
+    {
+        match self {
+            Entry::Occupied(occupied_entry) => {
+                Some(occupied_entry.insert(child()))
+            }
+
+            Entry::Vacant(vacant_entry) => {
+                vacant_entry.insert(child());
+                None
+            }
+        }
+    }
 }
 
 #[cfg(feature = "node4")]
@@ -137,12 +182,14 @@ impl<'a, T> Node<'a, T> {
 
     fn insert(&mut self, key: &[u8], value: T, term: u8) -> Option<T> {
         if key.is_empty() {
-            self.insert_child(term, Child::Leaf(value))
-                .map(|n| n.to_leaf().unwrap())
+            self.entry(term)
+                .replace_with(|| Child::Leaf(value))
+                .map(|child| child.to_leaf().unwrap())
         } else {
-            self.update_child(key[0], Child::Node(Node::new()));
-            let child = self.find_child_mut(key[0]).unwrap().as_node_mut().unwrap();
-            child.insert(&key[1..], value, term)
+            self.entry(key[0])
+                .or_insert_with(|| Child::Node(Node::new()))
+                .as_node_mut().unwrap()
+                .insert(&key[1..], value, term)
         }
     }
 
@@ -152,36 +199,29 @@ impl<'a, T> Node<'a, T> {
 
     fn get(&self, key: &[u8], term: u8) -> Option<&T> {
         if key.is_empty() {
-            self.find_child(term)
+            self.find(term)
                 .map(|n| n.as_leaf().unwrap())
         } else {
-            self.find_child(key[0])
-                .and_then(|n| n.as_node())
-                .and_then(|node| node.get(&key[1..], term))
+            self.find(key[0])
+                .and_then(|child| {
+                    let node = child.as_node().unwrap();
+                    node.get(&key[1..], term)
+                })
         }
     }
 
-    fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Option<Child<'a, T>> {
-        let result = self.0.insert_child(key, child);
-        match result {
-            Ok(replaced_child) => replaced_child,
-            Err(child)         => {
+    fn entry(&mut self, key: u8) -> Entry<'a, T> {
+        match self.0.entry(key) {
+            Ok(entry) => entry,
+            Err(_)    => {
                 self.upgrade();
-                self.insert_child(key, child)
+                self.entry(key)
             }
         }
     }
 
-    fn update_child(&mut self, key: u8, child: Child<'a, T>) {
-        let result = self.0.update_child(key, child);
-        if let Err(child) = result {
-            self.upgrade();
-            self.update_child(key, child)
-        }
-    }
-
-    fn find_child(&self, key: u8) -> Option<&Child<'a, T>> {
-        self.0.find_child(key)
+    fn find(&self, key: u8) -> Option<&Child<'a, T>> {
+        self.0.find(key)
     }
 
     fn upgrade(&mut self) {
@@ -189,7 +229,7 @@ impl<'a, T> Node<'a, T> {
     }
 
     fn find_child_mut(&mut self, key: u8) -> Option<&mut Child<'_, T>> {
-        unsafe { mem::transmute(self.find_child(key)) }
+        unsafe { mem::transmute(self.find(key)) }
     }
 }
 
