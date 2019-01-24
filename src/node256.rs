@@ -42,7 +42,7 @@ impl<'a, T> Node256<'a, T> {
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node256<'a, T> {
-    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
         if let Some(_) = self.children[key as usize].as_mut() {
             return Ok(());
         }

@@ -68,7 +68,7 @@ impl<'a, T> Default for Node48<'a, T> {
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node48<'a, T> {
-    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
         let ref mut index = self.child_indices[key as usize];
         if *index >= 48 {
             // If we're adding a new entry, there should be less than 48 entries.

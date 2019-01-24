@@ -109,7 +109,7 @@ impl<'a, T> Node16<'a, T> {
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
-    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
         if let Some(_) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
             return Ok(());
         } else {

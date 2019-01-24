@@ -3,7 +3,7 @@ use std::mem;
 trait NodeImpl<'a, T> {
     fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>>;
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>>;
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>>;
 
     fn find_child(&self, key: u8) -> Option<&Child<'a, T>>;
 
@@ -140,7 +140,7 @@ impl<'a, T> Node<'a, T> {
             self.insert_child(term, Child::Leaf(value))
                 .map(|n| n.to_leaf().unwrap())
         } else {
-            self.insert_child_if_not_exists(key[0], Child::Node(Node::new()));
+            self.update_child(key[0], Child::Node(Node::new()));
             let child = self.find_child_mut(key[0]).unwrap().as_node_mut().unwrap();
             child.insert(&key[1..], value, term)
         }
@@ -172,11 +172,11 @@ impl<'a, T> Node<'a, T> {
         }
     }
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) {
-        let result = self.0.insert_child_if_not_exists(key, child);
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) {
+        let result = self.0.update_child(key, child);
         if let Err(child) = result {
             self.upgrade();
-            self.insert_child_if_not_exists(key, child)
+            self.update_child(key, child)
         }
     }
 

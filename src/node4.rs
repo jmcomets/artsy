@@ -138,7 +138,7 @@ impl<'a, T> NodeImpl<'a, T> for Node4<'a, T> {
         Err(child)
     }
 
-    fn insert_child_if_not_exists(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
         // 1st step: try to replace existing entry
         for existing_child in self.children.iter_mut() {
             if let Some((k, _)) = existing_child {
