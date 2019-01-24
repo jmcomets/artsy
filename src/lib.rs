@@ -161,18 +161,6 @@ impl<'a, T> Node<'a, T> {
         }
     }
 
-    fn upgrade(&mut self) {
-        take_mut::take(&mut self.0, NodeImpl::upgrade);
-    }
-
-    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) {
-        let result = self.0.insert_child_if_not_exists(key, child);
-        if let Err(child) = result {
-            self.upgrade();
-            self.insert_child_if_not_exists(key, child)
-        }
-    }
-
     fn insert_child(&mut self, key: u8, child: NodeOrLeaf<'a, T>) -> Option<NodeOrLeaf<'a, T>> {
         let result = self.0.insert_child(key, child);
         match result {
@@ -184,8 +172,20 @@ impl<'a, T> Node<'a, T> {
         }
     }
 
+    fn insert_child_if_not_exists(&mut self, key: u8, child: NodeOrLeaf<'a, T>) {
+        let result = self.0.insert_child_if_not_exists(key, child);
+        if let Err(child) = result {
+            self.upgrade();
+            self.insert_child_if_not_exists(key, child)
+        }
+    }
+
     fn find_child(&self, key: u8) -> Option<&NodeOrLeaf<'a, T>> {
         self.0.find_child(key)
+    }
+
+    fn upgrade(&mut self) {
+        take_mut::take(&mut self.0, NodeImpl::upgrade);
     }
 
     fn find_child_mut(&mut self, key: u8) -> Option<&mut NodeOrLeaf<'_, T>> {
