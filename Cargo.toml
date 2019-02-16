@@ -2,6 +2,12 @@
 name = "artsy"
 version = "0.1.0"
 authors = ["Jean-Marie Comets <jean.marie.comets@gmail.com>"]
+description = "ART Tree data structure library."
+license = "MIT/Apache-2.0"
+documentation = "https://docs.rs/artsy"
+repository = "https://github.com/jmcomets/artsy"
+keywords = ["data-structure", "trie"]
+categories = ["data-structures"]
 edition = "2018"
 
 [dependencies]
