@@ -161,7 +161,7 @@ impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
     }
 }
 
-#[cfg(feature = "no-simd")]
+#[cfg(any(feature = "no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
 fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
     for i in 0..nb_children {
         if child_indices[i] == key {
@@ -171,7 +171,7 @@ fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8
     None
 }
 
-#[cfg(not(feature = "no-simd"))]
+#[cfg(all(not(feature = "no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
     // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
     // position in `child_indices` that needs to be searched.
