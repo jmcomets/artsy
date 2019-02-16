@@ -13,6 +13,3 @@ no-simd = []
 node4 = []
 node16 = []
 node48 = []
-
-[profile.release]
-debug = true
