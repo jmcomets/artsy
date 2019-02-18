@@ -1,14 +1,6 @@
+#![deny(warnings)]
+
 use std::mem;
-
-trait NodeImpl<'a, T> {
-    fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>>;
-
-    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>>;
-
-    fn find_child(&self, key: u8) -> Option<&Child<'a, T>>;
-
-    fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a>;
-}
 
 #[cfg(feature = "node4")]
 mod node4;
@@ -97,7 +89,7 @@ impl<'a, T> Trie<'a, T> {
 
     fn contains_impl(&self, key: &[u8]) -> bool {
         match self.root {
-            None                             => false,
+            None                        => false,
             Some(Child::Node(ref node)) => node.contains(key, self.term),
             Some(Child::Leaf(_))        => unreachable!(),
         }
@@ -117,7 +109,7 @@ impl<'a, T> Trie<'a, T> {
 
     fn get_impl(&self, key: &[u8]) -> Option<&T> {
         match self.root {
-            None                             => None,
+            None                        => None,
             Some(Child::Node(ref node)) => node.get(key, self.term),
             Some(Child::Leaf(_))        => unreachable!(),
         }
@@ -129,6 +121,16 @@ impl<'a, T> Trie<'a, T> {
 }
 
 struct Node<'a, T: 'a>(Box<dyn NodeImpl<'a, T> + 'a>);
+
+trait NodeImpl<'a, T> {
+    fn insert_child(&mut self, key: u8, child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>>;
+
+    fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>>;
+
+    fn find_child(&self, key: u8) -> Option<&Child<'a, T>>;
+
+    fn upgrade(self: Box<Self>) -> Box<dyn NodeImpl<'a, T> + 'a>;
+}
 
 impl<'a, T> Node<'a, T> {
     fn new() -> Self {
@@ -193,7 +195,7 @@ impl<'a, T> Node<'a, T> {
     }
 }
 
-pub(crate) enum Child<'a, T: 'a> {
+enum Child<'a, T: 'a> {
     Node(Node<'a, T>),
     Leaf(T),
 }
