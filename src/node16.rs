@@ -106,11 +106,45 @@ impl<'a, T> Node16<'a, T> {
 
         Box::new(Node256::new(children))
     }
+
+
+    #[cfg(any(feature = "no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
+    fn find_child_index(&self, key: u8) -> Option<usize> {
+        for i in 0..self.nb_children {
+            if self.child_indices[i] == key {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    #[cfg(all(not(feature = "no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
+    fn find_child_index(&self, key: u8) -> Option<usize> {
+        // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
+        // position in `child_indices` that needs to be searched.
+        let key_vec = unsafe { _mm_set1_epi8(key as i8) };
+        let indices_vec = unsafe { _mm_loadu_si128(self.child_indices.as_ptr() as *const _) };
+
+        // Compare all `child_indices` in parallel. Don't worry if some of the keys
+        // aren't valid, we'll mask the results to only consider the valid ones below.
+        let matches = unsafe { _mm_cmpeq_epi8(key_vec, indices_vec) };
+
+        // Apply a mask to select only the first `nb_children` values.
+        let mask = (1 << self.nb_children) - 1;
+        let match_bits = unsafe { _mm_movemask_epi8(matches) & mask };
+
+        // The child's index is the first '1' in `match_bits`
+        if match_bits != 0 {
+            Some(match_bits.trailing_zeros() as usize)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
     fn update_child(&mut self, key: u8, child: Child<'a, T>) -> Result<(), Child<'a, T>> {
-        if let Some(_) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
+        if let Some(_) = self.find_child_index(key) {
             return Ok(());
         } else {
             // If we're adding a new entry, there should be less than 16 entries.
@@ -126,7 +160,7 @@ impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
     }
 
     fn insert_child(&mut self, key: u8, mut child: Child<'a, T>) -> Result<Option<Child<'a, T>>, Child<'a, T>> {
-        if let Some(index) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
+        if let Some(index) = self.find_child_index(key) {
             mem::swap(&mut child, self.children[index as usize].as_mut().unwrap());
             return Ok(Some(child));
         } else {
@@ -153,43 +187,10 @@ impl<'a, T> NodeImpl<'a, T> for Node16<'a, T> {
     }
 
     fn find_child(&self, key: u8) -> Option<&Child<'a, T>> {
-        if let Some(index) = node16_find_child_index(&self.child_indices, self.nb_children as usize, key) {
+        if let Some(index) = self.find_child_index(key) {
             self.children[index as usize].as_ref().map(|x| &**x)
         } else {
             None
         }
-    }
-}
-
-#[cfg(any(feature = "no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
-fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
-    for i in 0..nb_children {
-        if child_indices[i] == key {
-            return Some(i);
-        }
-    }
-    None
-}
-
-#[cfg(all(not(feature = "no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
-fn node16_find_child_index(child_indices: &[u8; 16], nb_children: usize, key: u8) -> Option<usize> {
-    // `key_vec` is 16 repeated copies of the searched-for byte, one for every possible
-    // position in `child_indices` that needs to be searched.
-    let key_vec = unsafe { _mm_set1_epi8(key as i8) };
-    let indices_vec = unsafe { _mm_loadu_si128(child_indices.as_ptr() as *const _) };
-
-    // Compare all `child_indices` in parallel. Don't worry if some of the keys
-    // aren't valid, we'll mask the results to only consider the valid ones below.
-    let matches = unsafe { _mm_cmpeq_epi8(key_vec, indices_vec) };
-
-    // Apply a mask to select only the first `nb_children` values.
-    let mask = (1 << nb_children) - 1;
-    let match_bits = unsafe { _mm_movemask_epi8(matches) & mask };
-
-    // The child's index is the first '1' in `match_bits`
-    if match_bits != 0 {
-        Some(match_bits.trailing_zeros() as usize)
-    } else {
-        None
     }
 }
