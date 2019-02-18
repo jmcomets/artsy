@@ -239,6 +239,17 @@ mod tests {
     use super::*;
     use std::fmt::Debug;
 
+    #[test]
+    fn test_readme_insert_lookup_example() {
+        let mut map = Trie::for_utf8();
+        map.insert(b"a", 0).unwrap();
+        map.insert(b"ac", 1).unwrap();
+
+        assert_eq!(map.get(b"a").unwrap(), Some(&0));
+        assert_eq!(map.get(b"ac").unwrap(), Some(&1));
+        assert_eq!(map.get(b"ab").unwrap(), None);
+    }
+
     trait TrieTestExtensions<T: Clone + PartialEq + Debug> {
         fn check_insertion(&mut self, key: &[u8], value: T);
 
