@@ -10,6 +10,19 @@ A work-in-progress implementation of an [ART Tree][paper].
 
 ## Features
 
+### Terminator Customization
+
+Although the original ART paper only considers ASCII strings as keys, therefore
+defines `\0` as string terminator, the idea can be extended to UTF-8 by using
+`0xff` as string terminator. Of course, you can use any terminator if you're
+inserting raw bytes.
+
+By default, you should use `for_utf8()` if you're using `String` keys.
+
+Terminator customization is why each lookup/insertion/deletion method returns a
+`Result<.., KeyContainsTerminator>`; each method is also accompanied by a
+equivalent unchecked version.
+
 ### Filtering used node types
 
 Although the original ART paper uses 4 different types of nodes (4, 16, 48 and
