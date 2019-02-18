@@ -1,6 +1,6 @@
 [package]
 name = "artsy"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jean-Marie Comets <jean.marie.comets@gmail.com>"]
 description = "ART Tree data structure library."
 license = "MIT/Apache-2.0"
